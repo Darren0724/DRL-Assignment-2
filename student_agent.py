@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import copy
 import random
 import math
-
+  
 
 class Game2048Env(gym.Env):
     def __init__(self):
