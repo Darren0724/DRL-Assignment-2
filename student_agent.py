@@ -9,6 +9,17 @@ import copy
 import random
 import math
 
+COLOR_MAP = {
+    0: "#cdc1b4", 2: "#eee4da", 4: "#ede0c8", 8: "#f2b179",
+    16: "#f59563", 32: "#f67c5f", 64: "#f65e3b", 128: "#edcf72",
+    256: "#edcc61", 512: "#edc850", 1024: "#edc53f", 2048: "#edc22e",
+    4096: "#3c3a32", 8192: "#3c3a32", 16384: "#3c3a32", 32768: "#3c3a32"
+}
+TEXT_COLOR = {
+    2: "#776e65", 4: "#776e65", 8: "#f9f6f2", 16: "#f9f6f2",
+    32: "#f9f6f2", 64: "#f9f6f2", 128: "#f9f6f2", 256: "#f9f6f2",
+    512: "#f9f6f2", 1024: "#f9f6f2", 2048: "#f9f6f2", 4096: "#f9f6f2"
+}
 
 class Game2048Env(gym.Env):
     def __init__(self):
@@ -328,25 +339,167 @@ patterns = [
     [(2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1)],
 ]
 
+env = Game2048Env()
 
-with open('model2/approximator1.pkl', 'rb') as f:
+
+class TD_MCTS_Node:
+    def __init__(self, state, score, parent=None, action=None):
+        """
+        state: Current board state (numpy array).
+        score: Cumulative score at this node.
+        parent: Parent node (None for root).
+        action: Action taken from parent to reach this node.
+        """
+        self.state = state
+        self.score = score
+        self.parent = parent
+        self.action = action
+        self.children = {}
+        self.visits = 0
+        self.total_reward = 0.0
+        self.untried_actions = [a for a in range(4) if env.is_move_legal(a)]
+
+    def fully_expanded(self):
+        return len(self.untried_actions) == 0
+
+class TD_MCTS:
+    def __init__(self, env, approximator, iterations=500, exploration_constant=1.41, rollout_depth=10, gamma=0.99):
+        """
+        Initialize TD-MCTS.
+        
+        Args:
+            env: Environment with methods is_move_legal(action), step(action), is_game_over(),
+                 and attributes board (numpy array) and score (float/int).
+            approximator: Value approximator with method value(state) -> float.
+            iterations: Number of MCTS iterations.
+            exploration_constant: UCT exploration parameter.
+            rollout_depth: Maximum depth for random rollouts.
+            gamma: Discount factor for backpropagation.
+        """
+        self.env = env
+        self.approximator = approximator
+        self.iterations = iterations
+        self.c = exploration_constant
+        self.rollout_depth = rollout_depth
+        self.gamma = gamma
+
+    def create_env_from_state(self, state, score):
+        try:
+            new_env = copy.deepcopy(self.env)
+            new_env.board = state.copy()
+            new_env.score = score
+            return new_env
+        except AttributeError as e:
+            raise ValueError("Environment must have 'board' and 'score' attributes") from e
+
+    def select_child(self, node):
+        best_action = None
+        best_score = -float('inf')
+
+        for action, child in node.children.items():
+            if child.visits == 0:
+                return action
+            uct_score = (child.total_reward / child.visits) + self.c * np.sqrt(np.log(node.visits + 1) / child.visits)
+            if uct_score > best_score:
+                best_score = uct_score
+                best_action = action
+
+        return best_action
+
+    def rollout(self, sim_env, depth):
+        current_depth = 0
+        while current_depth < depth and not sim_env.is_game_over():
+            legal_moves = [a for a in range(4) if sim_env.is_move_legal(a)]
+            if not legal_moves:
+                break
+            action = random.choice(legal_moves)
+            sim_env.step(action)
+            current_depth += 1
+        return self.approximator.value(sim_env.board)
+
+    def backpropagate(self, node, reward):
+        while node is not None:
+            node.visits += 1
+            node.total_reward += reward
+            node = node.parent
+
+    def run_simulation(self, root):
+        node = root
+        sim_env = self.create_env_from_state(node.state, node.score)
+
+        # Selection
+        while node.fully_expanded() and not sim_env.is_game_over():
+            action = self.select_child(node)
+            node = node.children[action]
+            sim_env.step(action)
+            if sim_env.is_game_over():
+                break
+
+        # Expansion
+        if node.untried_actions and not sim_env.is_game_over():
+            action = random.choice(node.untried_actions)
+            node.untried_actions.remove(action)
+            new_state, new_score, done, _ = sim_env.step(action)
+            node.children[action] = TD_MCTS_Node(new_state, new_score, parent=node, action=action)
+            node = node.children[action]
+
+        # Rollout
+        rollout_reward = self.rollout(sim_env, self.rollout_depth)
+        # Backpropagate
+        self.backpropagate(node, rollout_reward)
+
+    def best_action_distribution(self, root):
+        total_visits = sum(child.visits for child in root.children.values())
+        distribution = np.zeros(4)
+        best_visits = -1
+        best_action = None
+
+        for action, child in root.children.items():
+            visits = child.visits
+            distribution[action] = visits / total_visits if total_visits > 0 else 0
+            if visits > best_visits:
+                best_visits = visits
+                best_action = action
+
+        return best_action, distribution
+
+    def search(self, state, score):
+        """
+        Run MCTS to find the best action from the given state.
+        
+        Args:
+            state: Initial board state (numpy array).
+            score: Initial score.
+        
+        Returns:
+            best_action: Best action to take.
+            distribution: Normalized visit count distribution over actions.
+        """
+        root = TD_MCTS_Node(state, score)
+        for _ in range(self.iterations):
+            self.run_simulation(root)
+        best_action, distribution = self.best_action_distribution(root)
+        return best_action, distribution
+
+
+with open('approximator1.pkl', 'rb') as f:
     approximator = pickle.load(f)
 
-
 def get_action(state, score):
-    env = Game2048Env()
+    global env
     env.board = state.copy()
-    env.score = score 
-    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
-    move_values = []
-    current_board = copy.deepcopy(env.board)
-    current_score = env.score
-    for a in legal_moves:
-        env.board = copy.deepcopy(current_board)
-        env.step(a)
-        move_values.append(approximator.value(env.board))
-        env.board = current_board
-        env.score = current_score
+    env.score = score
 
-    action = legal_moves[np.argmax(move_values)]
-    return action 
+    mcts = TD_MCTS(
+        env=env,
+        approximator=approximator,  
+        iterations=100,  
+        exploration_constant=1.41, 
+        rollout_depth=1,  
+        gamma=0.99  
+    )
+
+    
+    best_action, _ = mcts.search(state, score)
+
+    return best_action
