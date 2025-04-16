@@ -329,7 +329,7 @@ patterns = [
 ]
 
 
-with open('model/approximator1.pkl', 'rb') as f:
+with open('model2/approximator1.pkl', 'rb') as f:
     approximator = pickle.load(f)
 
 
