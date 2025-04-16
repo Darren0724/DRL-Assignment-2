@@ -232,6 +232,18 @@ class Game2048Env(gym.Env):
         return not np.array_equal(self.board, temp_board)
 
 from collections import defaultdict
+import numpy as np
+import random
+import gym
+from gym import spaces
+import matplotlib.pyplot as plt
+import copy
+import random
+import math
+import numpy as np
+from tqdm import tqdm
+from collections import defaultdict
+from time import sleep
 
 class NTupleApproximator:
     def __init__(self, board_size, patterns):
@@ -319,10 +331,6 @@ patterns = [
 
 with open('model/approximator1.pkl', 'rb') as f:
     approximator = pickle.load(f)
-
-
-
-
 
 
 def get_action(state, score):
