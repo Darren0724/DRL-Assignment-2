@@ -482,7 +482,7 @@ class TD_MCTS:
         return best_action, distribution
 
 
-with open('approximator1.pkl', 'rb') as f:
+with open('model2/approximator1.pkl', 'rb') as f:
     approximator = pickle.load(f)
 
 def get_action(state, score):
@@ -490,16 +490,20 @@ def get_action(state, score):
     env.board = state.copy()
     env.score = score
 
-    mcts = TD_MCTS(
-        env=env,
-        approximator=approximator,  
-        iterations=100,  
-        exploration_constant=1.41, 
-        rollout_depth=1,  
-        gamma=0.99  
-    )
+    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+
+    move_values = []
+    current_board = copy.deepcopy(env.board)
+    current_score = env.score
+    for a in legal_moves:
+        env.board = copy.deepcopy(current_board)
+        env.step(a)
+        move_values.append(approximator.value(env.board))
+        env.board = current_board
+        env.score = current_score
+
+    action = legal_moves[np.argmax(move_values)]
 
     
-    best_action, _ = mcts.search(state, score)
 
-    return best_action
+    return action
