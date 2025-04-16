@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import copy
 import random
 import math
-  
+
 
 class Game2048Env(gym.Env):
     def __init__(self):
@@ -231,10 +231,110 @@ class Game2048Env(gym.Env):
         # If the simulated board is different from the current board, the move is legal
         return not np.array_equal(self.board, temp_board)
 
+from collections import defaultdict
+
+class NTupleApproximator:
+    def __init__(self, board_size, patterns):
+        """
+        Initializes the N-Tuple approximator.
+        """
+        self.board_size = board_size
+        self.patterns = patterns
+        self.weights = [defaultdict(float) for _ in patterns]
+        self.symmetry_patterns = []
+        for idx, pattern in enumerate(self.patterns):
+            syms = self.generate_symmetries(pattern)
+            for syms_ in syms:
+                self.symmetry_patterns.append((idx, syms_))
+
+    def generate_symmetries(self, pattern):
+        board_size = self.board_size
+        symmetries = []
+
+        def transform_pattern(pattern, transform_func):
+            return [transform_func(i, j) for (i, j) in pattern]
+
+        def rot90(i, j):
+            return (j, board_size - 1 - i)
+
+        def rot180(i, j):
+            return (board_size - 1 - i, board_size - 1 - j)
+
+        def rot270(i, j):
+            return (board_size - 1 - j, i)
+
+        def reflect_horiz(i, j):
+            return (board_size - 1 - i, j)
+
+        symmetries.append(pattern)
+        symmetries.append(transform_pattern(pattern, rot90))
+        symmetries.append(transform_pattern(pattern, rot180))
+        symmetries.append(transform_pattern(pattern, rot270))
+        symmetries.append(transform_pattern(pattern, reflect_horiz))
+        symmetries.append(transform_pattern(transform_pattern(pattern, rot90), reflect_horiz))
+        symmetries.append(transform_pattern(transform_pattern(pattern, rot180), reflect_horiz))
+        symmetries.append(transform_pattern(transform_pattern(pattern, rot270), reflect_horiz))
+
+        return symmetries
+
+    def tile_to_index(self, tile):
+        if tile == 0:
+            return 0
+        else:
+            return int(math.log(tile, 2))
+
+    def get_feature(self, board, coords):
+        feature = []
+        for coord in coords:
+            i, j = coord
+            feature.append(self.tile_to_index(board[i, j]))
+        return tuple(feature)
+
+
+    def value(self, board):
+        value = 0
+        for idx, pattern in self.symmetry_patterns:
+            feature = self.get_feature(board, pattern)
+            pattern_value = self.weights[idx][feature]
+            value += pattern_value
+        return value
+
+    def update(self, board, delta, alpha):
+        for idx, pattern in self.symmetry_patterns:
+            feature = self.get_feature(board, pattern)
+            self.weights[idx][feature] += alpha * delta / len(self.patterns)
+
+import pickle
+# Define n-tuple patterns
+patterns = [
+    [(0, 0), (0, 1), (0, 2), (0, 3)],
+    [(1, 0), (1, 1), (1, 2), (1, 3)],
+    [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2)],
+    [(1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)],
+    [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1)],
+    [(1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1)],
+    [(2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1)],
+]
+
+try:
+    with open('approximator.pkl', 'rb') as f:
+        approximator = pickle.load(f)
+except:
+    approximator = NTupleApproximator(4, patterns)
+
+
 def get_action(state, score):
     env = Game2048Env()
-    return random.choice([0, 1, 2, 3]) # Choose a random action
-    
-    # You can submit this random agent to evaluate the performance of a purely random strategy.
+    legal_moves = [a for a in range(4) if env.is_move_legal(a)]
+    move_values = []
+    current_board = copy.deepcopy(env.board)
+    current_score = env.score
+    for a in legal_moves:
+        env.board = copy.deepcopy(current_board)
+        env.step(a)
+        move_values.append(approximator.value(env.board))
+        env.board = current_board
+        env.score = current_score
 
-
+    action = legal_moves[np.argmax(move_values)]
+    return action 
