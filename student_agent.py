@@ -317,7 +317,7 @@ patterns = [
 ]
 
 try:
-    with open('approximator.pkl', 'rb') as f:
+    with open('approximator1.pkl', 'rb') as f:
         approximator = pickle.load(f)
 except:
     approximator = NTupleApproximator(4, patterns)
@@ -325,6 +325,8 @@ except:
 
 def get_action(state, score):
     env = Game2048Env()
+    env.board = state.copy
+    env.score = score 
     legal_moves = [a for a in range(4) if env.is_move_legal(a)]
     move_values = []
     current_board = copy.deepcopy(env.board)
