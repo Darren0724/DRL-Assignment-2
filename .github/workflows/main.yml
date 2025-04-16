@@ -32,7 +32,7 @@ jobs:
 
     - name: 4. Download models
       run: |
-        curl -L "https://drive.google.com/file/d/1xZ6O1xRf_0F1y93dMXwI5HFyZUqaVW6B" -o model.zip
+        curl -L "https://drive.usercontent.google.com/download?id=1xZ6O1xRf_0F1y93dMXwI5HFyZUqaVW6B&confirm=xxx" -o model.zip
         unzip model.zip
     - name: 5. Run Evaluation
       run: python eval.py --token a91aae52cff9ef65932db06b150ffd47
