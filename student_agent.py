@@ -325,7 +325,7 @@ except:
 
 def get_action(state, score):
     env = Game2048Env()
-    env.board = state.copy
+    env.board = state.copy()
     env.score = score 
     legal_moves = [a for a in range(4) if env.is_move_legal(a)]
     move_values = []
